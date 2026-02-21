@@ -1,0 +1,36 @@
+# 移动端气泡样式模块
+
+导航: `根 CLAUDE.md > mobile`
+
+## 模块职责
+- 定义移动端聊天页面的气泡布局、头像/用户名显示策略、消息分隔条与反应样式。
+- 承接 `common/` 输出的 CSS 变量，完成视觉落地。
+
+## 入口与接口
+- 入口文件: `mobile.scss`
+- 关键样式作用域:
+  - `.chat-messages-scroller`（背景色/纹理）
+  - `.chat-message` 与 `.chat-message-content`（气泡主体）
+  - `.chat-message-info`（时间、书签、用户名布局）
+  - `.chat-thread__body.chat-messages-scroller`（线程视图补丁）
+- 关键函数:
+  - `check-empty($variable, $enable_pattern)`：决定背景纹理 URL 或 `none`。
+
+## 依赖关系
+- 上游依赖:
+  - `common/color_definitions.scss` 产出的 `--bubble-bg-*` 变量
+  - `settings.yml` 注入的 `$background-pattern`, `$enable_pattern`
+  - `about.json` 资产映射中的 `$chat-background`
+- 下游影响:
+  - 直接改变移动端聊天窗口样式，不涉及后端数据。
+
+## 关键文件
+- `mobile/mobile.scss`: 主要视觉与布局实现。
+
+## 测试与质量
+- 自动化测试: 未发现模块内测试文件。
+- 验证方式: 依赖宿主 Discourse 移动端页面手工回归（含浅色/深色主题、是否启用纹理）。
+
+## 维护建议
+- 新样式优先复用 `.chat-*` 语义选择器，减少与核心 DOM 变动的耦合。
+- 涉及背景图与混合模式时，建议分别在浅色/深色方案下校验可读性。
