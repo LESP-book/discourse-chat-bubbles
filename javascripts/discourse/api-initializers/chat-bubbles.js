@@ -199,24 +199,22 @@ export default apiInitializer("0.11.1", (api) => {
     return fallback;
   }
 
-  function sortReadersAndBuildSignature(readers) {
-    const sortedReaders = [...readers].sort((left, right) => {
+  function sortReadersBySeenTime(readers) {
+    return [...readers].sort((left, right) => {
       return (
         (right.lastViewedAt?.getTime() || 0) - (left.lastViewedAt?.getTime() || 0)
       );
     });
-    const signature = sortedReaders
+  }
+
+  function buildReadersSignature(readers) {
+    return readers
       .map((reader) => {
         return `${reader.userId}:${reader.lastReadMessageId}:${
           reader.lastViewedAt?.getTime() || 0
         }`;
       })
       .join("|");
-
-    return {
-      sortedReaders,
-      signature,
-    };
   }
 
   function buildReceiptElement(sortedReaders, signature) {
@@ -307,9 +305,15 @@ export default apiInitializer("0.11.1", (api) => {
 
   function syncReadReceiptsInDom(memberships) {
     const containers = document.querySelectorAll(
-      ".chat-message-container.is-by-current-user[data-id]"
+      ".chat-message-container[data-id]"
     );
 
+    if (memberships.length === 0) {
+      removeAllReadReceipts();
+      return;
+    }
+
+    const membershipsSortedBySeenTime = sortReadersBySeenTime(memberships);
     const activeContainerIds = new Set();
 
     containers.forEach((container) => {
@@ -319,7 +323,7 @@ export default apiInitializer("0.11.1", (api) => {
       }
 
       activeContainerIds.add(String(messageId));
-      const readers = getReadersForMessage(memberships, messageId);
+      const readers = getReadersForMessage(membershipsSortedBySeenTime, messageId);
       const existingReceipt = container.querySelector(".cb-read-receipt");
 
       if (readers.length === 0) {
@@ -327,13 +331,13 @@ export default apiInitializer("0.11.1", (api) => {
         return;
       }
 
-      const { sortedReaders, signature } = sortReadersAndBuildSignature(readers);
+      const signature = buildReadersSignature(readers);
 
       if (existingReceipt?.dataset.signature === signature) {
         return;
       }
 
-      const nextReceipt = buildReceiptElement(sortedReaders, signature);
+      const nextReceipt = buildReceiptElement(readers, signature);
 
       if (existingReceipt) {
         existingReceipt.replaceWith(nextReceipt);
