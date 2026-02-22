@@ -267,16 +267,19 @@
 
   .cb-read-receipt__panel {
     display: none;
-    position: absolute;
-    right: 0;
-    bottom: calc(100% + 0.5rem);
+    position: fixed;
+    left: 0;
+    top: 0;
     width: min(320px, calc(100vw - 2rem));
+    max-height: calc(100vh - 1rem);
+    overflow-y: auto;
     background: var(--secondary);
     border: 1px solid var(--primary-low);
     border-radius: 14px;
     box-shadow: 0 14px 30px rgba(0, 0, 0, 0.28);
     padding: 0.9rem;
     text-align: left;
+    z-index: 10010;
   }
 
   .cb-read-receipt__title {

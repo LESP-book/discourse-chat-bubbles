@@ -5,6 +5,7 @@ const MEMBERSHIP_CACHE_TTL_MS = 15000;
 const MEMBERSHIP_PAGE_LIMIT = 20;
 const RENDER_DEBOUNCE_MS = 120;
 const RECEIPT_AVATAR_SIZE = 40;
+const RECEIPT_PANEL_GAP = 8;
 
 export default apiInitializer("0.11.1", (api) => {
   if (!settings.enable_read_receipts) {
@@ -297,9 +298,36 @@ export default apiInitializer("0.11.1", (api) => {
     });
   }
 
+  function positionReceiptPanel(trigger, panel) {
+    const triggerRect = trigger.getBoundingClientRect();
+    const panelRect = panel.getBoundingClientRect();
+    const viewportWidth = window.innerWidth;
+    const viewportHeight = window.innerHeight;
+
+    const minLeft = RECEIPT_PANEL_GAP;
+    const maxLeft = Math.max(
+      minLeft,
+      viewportWidth - panelRect.width - RECEIPT_PANEL_GAP
+    );
+    let left = triggerRect.right - panelRect.width;
+    left = Math.max(minLeft, Math.min(left, maxLeft));
+
+    let top = triggerRect.top - panelRect.height - RECEIPT_PANEL_GAP;
+    if (top < RECEIPT_PANEL_GAP) {
+      top = Math.min(
+        viewportHeight - panelRect.height - RECEIPT_PANEL_GAP,
+        triggerRect.bottom + RECEIPT_PANEL_GAP
+      );
+    }
+    top = Math.max(RECEIPT_PANEL_GAP, top);
+
+    panel.style.left = `${left}px`;
+    panel.style.top = `${top}px`;
+  }
+
   function getReadersForMessage(memberships, messageId) {
     return memberships.filter((membership) => {
-      return membership.lastReadMessageId >= messageId;
+      return membership.lastReadMessageId === messageId;
     });
   }
 
@@ -432,6 +460,7 @@ export default apiInitializer("0.11.1", (api) => {
         const panel = receipt.querySelector(".cb-read-receipt__panel");
         if (panel) {
           panel.hidden = false;
+          positionReceiptPanel(trigger, panel);
         }
       }
 
