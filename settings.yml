@@ -30,3 +30,13 @@ background_pattern:
   default: ""
   type: upload
   description: Background pattern for the chat window, works best with SVGs. If you want to use an image instead, make sure it's optimised for mobile device viewport.
+enable_read_receipts:
+  default: true
+  type: bool
+  description: Show read avatars and read times for your chat messages.
+read_receipt_max_avatars:
+  default: 3
+  min: 1
+  max: 8
+  type: integer
+  description: Maximum number of read avatars shown in the compact read receipt trigger.
