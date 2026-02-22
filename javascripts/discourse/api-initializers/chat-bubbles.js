@@ -301,25 +301,28 @@ export default apiInitializer("0.11.1", (api) => {
   function positionReceiptPanel(trigger, panel) {
     const triggerRect = trigger.getBoundingClientRect();
     const panelRect = panel.getBoundingClientRect();
-    const viewportWidth = window.innerWidth;
-    const viewportHeight = window.innerHeight;
+    const chatViewport =
+      trigger.closest(".chat-messages-scroller") || document.body;
+    const boundsRect = chatViewport.getBoundingClientRect();
 
-    const minLeft = RECEIPT_PANEL_GAP;
+    const minLeft = boundsRect.left + RECEIPT_PANEL_GAP;
     const maxLeft = Math.max(
       minLeft,
-      viewportWidth - panelRect.width - RECEIPT_PANEL_GAP
+      boundsRect.right - panelRect.width - RECEIPT_PANEL_GAP
     );
-    let left = triggerRect.right - panelRect.width;
+    let left = triggerRect.left + triggerRect.width / 2 - panelRect.width / 2;
     left = Math.max(minLeft, Math.min(left, maxLeft));
 
+    const minTop = boundsRect.top + RECEIPT_PANEL_GAP;
+    const maxTop = Math.max(
+      minTop,
+      boundsRect.bottom - panelRect.height - RECEIPT_PANEL_GAP
+    );
     let top = triggerRect.top - panelRect.height - RECEIPT_PANEL_GAP;
-    if (top < RECEIPT_PANEL_GAP) {
-      top = Math.min(
-        viewportHeight - panelRect.height - RECEIPT_PANEL_GAP,
-        triggerRect.bottom + RECEIPT_PANEL_GAP
-      );
+    if (top < minTop) {
+      top = triggerRect.bottom + RECEIPT_PANEL_GAP;
     }
-    top = Math.max(RECEIPT_PANEL_GAP, top);
+    top = Math.max(minTop, Math.min(top, maxTop));
 
     panel.style.left = `${left}px`;
     panel.style.top = `${top}px`;
