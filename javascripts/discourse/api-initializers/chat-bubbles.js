@@ -1,7 +1,7 @@
 import { apiInitializer } from "discourse/lib/api";
 
 const MEMBERSHIP_PAGE_SIZE = 50;
-const MEMBERSHIP_CACHE_TTL_MS = 15000;
+const MEMBERSHIP_CACHE_TTL_MS = 5000;
 const MEMBERSHIP_PAGE_LIMIT = 20;
 const RENDER_DEBOUNCE_MS = 120;
 const RECEIPT_AVATAR_SIZE = 40;
@@ -29,6 +29,8 @@ export default apiInitializer("0.11.1", (api) => {
     renderInFlight: false,
     pendingRender: false,
     forceNextMembershipRefresh: false,
+    openPanel: null,
+    busSubscription: null,
   };
 
   function maxAvatarsToShow() {
@@ -168,19 +170,31 @@ export default apiInitializer("0.11.1", (api) => {
     return inFlightPromise;
   }
 
-  function closeAllReceiptPanels() {
-    document.querySelectorAll(".cb-read-receipt.is-open").forEach((receipt) => {
-      receipt.classList.remove("is-open");
-      const panel = receipt.querySelector(".cb-read-receipt__panel");
-      if (panel) {
-        panel.hidden = true;
-      }
+  // Portal layer: panels render here to escape message stacking contexts
+  function getPortalLayer() {
+    let layer = document.getElementById("cb-read-receipt-portal");
+    if (!layer) {
+      layer = document.createElement("div");
+      layer.id = "cb-read-receipt-portal";
+      document.body.appendChild(layer);
+    }
+    return layer;
+  }
 
-      const trigger = receipt.querySelector(".cb-read-receipt__trigger");
-      if (trigger) {
-        trigger.setAttribute("aria-expanded", "false");
-      }
-    });
+  function closeAllReceiptPanels() {
+    if (!state.openPanel) {
+      return;
+    }
+
+    const { panel, receipt, trigger } = state.openPanel;
+    panel.hidden = true;
+    // Return panel to its origin receipt for DOM lifecycle management
+    receipt.appendChild(panel);
+    receipt.classList.remove("is-open");
+    if (trigger) {
+      trigger.setAttribute("aria-expanded", "false");
+    }
+    state.openPanel = null;
   }
 
   function buildAvatar(user, className, size) {
@@ -301,28 +315,30 @@ export default apiInitializer("0.11.1", (api) => {
   function positionReceiptPanel(trigger, panel) {
     const triggerRect = trigger.getBoundingClientRect();
     const panelRect = panel.getBoundingClientRect();
-    const chatViewport =
-      trigger.closest(".chat-messages-scroller") || document.body;
-    const boundsRect = chatViewport.getBoundingClientRect();
 
-    const minLeft = boundsRect.left + RECEIPT_PANEL_GAP;
-    const maxLeft = Math.max(
-      minLeft,
-      boundsRect.right - panelRect.width - RECEIPT_PANEL_GAP
-    );
-    let left = triggerRect.left + triggerRect.width / 2 - panelRect.width / 2;
-    left = Math.max(minLeft, Math.min(left, maxLeft));
+    // Use viewport coordinates consistently (panel is in body portal, position: fixed)
+    const vw = window.visualViewport?.width ?? window.innerWidth;
+    const vh = window.visualViewport?.height ?? window.innerHeight;
 
-    const minTop = boundsRect.top + RECEIPT_PANEL_GAP;
-    const maxTop = Math.max(
-      minTop,
-      boundsRect.bottom - panelRect.height - RECEIPT_PANEL_GAP
+    const panelWidth = panelRect.width || Math.min(320, vw - 32);
+    const panelHeight = panelRect.height;
+
+    // Horizontal: center on trigger, clamp to viewport edges
+    let left = triggerRect.left + triggerRect.width / 2 - panelWidth / 2;
+    left = Math.max(
+      RECEIPT_PANEL_GAP,
+      Math.min(left, vw - panelWidth - RECEIPT_PANEL_GAP)
     );
-    let top = triggerRect.top - panelRect.height - RECEIPT_PANEL_GAP;
-    if (top < minTop) {
+
+    // Vertical: prefer above trigger, fall back to below if insufficient space
+    let top = triggerRect.top - panelHeight - RECEIPT_PANEL_GAP;
+    if (top < RECEIPT_PANEL_GAP) {
       top = triggerRect.bottom + RECEIPT_PANEL_GAP;
     }
-    top = Math.max(minTop, Math.min(top, maxTop));
+    top = Math.max(
+      RECEIPT_PANEL_GAP,
+      Math.min(top, vh - panelHeight - RECEIPT_PANEL_GAP)
+    );
 
     panel.style.left = `${left}px`;
     panel.style.top = `${top}px`;
@@ -335,6 +351,9 @@ export default apiInitializer("0.11.1", (api) => {
   }
 
   function syncReadReceiptsInDom(memberships) {
+    // Close open panel before mutating DOM to prevent orphaned portal panels
+    closeAllReceiptPanels();
+
     const containers = document.querySelectorAll(
       ".chat-message-container[data-id]"
     );
@@ -412,6 +431,7 @@ export default apiInitializer("0.11.1", (api) => {
         state.activeChannelId = channelId;
         state.forceNextMembershipRefresh = true;
         closeAllReceiptPanels();
+        subscribeToChannel(channelId);
       }
 
       const memberships = await getMemberships(channelId, {
@@ -453,24 +473,41 @@ export default apiInitializer("0.11.1", (api) => {
       event.preventDefault();
 
       const receipt = trigger.closest(".cb-read-receipt");
-      const isOpen = receipt?.classList.contains("is-open");
+      const wasOpen = receipt?.classList.contains("is-open");
 
       closeAllReceiptPanels();
 
-      if (!isOpen && receipt) {
-        receipt.classList.add("is-open");
-        trigger.setAttribute("aria-expanded", "true");
+      if (!wasOpen && receipt) {
         const panel = receipt.querySelector(".cb-read-receipt__panel");
         if (panel) {
+          // Portal: move panel to body layer to escape stacking contexts
+          getPortalLayer().appendChild(panel);
+          receipt.classList.add("is-open");
+          trigger.setAttribute("aria-expanded", "true");
           panel.hidden = false;
-          positionReceiptPanel(trigger, panel);
+
+          // Double-rAF ensures browser completes layout before measurement
+          requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+              if (panel.hidden) {
+                return;
+              }
+              positionReceiptPanel(trigger, panel);
+            });
+          });
+
+          state.openPanel = { panel, receipt, trigger };
         }
       }
 
       return;
     }
 
-    if (!event.target.closest(".cb-read-receipt")) {
+    // Close if clicking outside receipt trigger and portal panel
+    if (
+      !event.target.closest(".cb-read-receipt") &&
+      !event.target.closest("#cb-read-receipt-portal")
+    ) {
       closeAllReceiptPanels();
     }
   }
@@ -481,9 +518,51 @@ export default apiInitializer("0.11.1", (api) => {
     }
   }
 
+  // MessageBus integration for faster read-state updates
+  function subscribeToChannel(channelId) {
+    const messageBus = api.container.lookup("service:message-bus");
+    if (!messageBus) {
+      return;
+    }
+
+    // Unsubscribe from previous channel
+    if (state.busSubscription) {
+      messageBus.unsubscribe(
+        state.busSubscription.channel,
+        state.busSubscription.callback
+      );
+      state.busSubscription = null;
+    }
+
+    const channel = `/chat/${channelId}`;
+    const callback = (busData) => {
+      const type = busData?.type;
+      if (
+        type === "sent" ||
+        type === "processed" ||
+        type === "edit" ||
+        type === "delete" ||
+        type === "restore" ||
+        type === "self"
+      ) {
+        scheduleRender({ forceMembershipRefresh: true });
+      }
+    };
+
+    messageBus.subscribe(channel, callback);
+    state.busSubscription = { channel, callback };
+  }
+
   function setup() {
     document.addEventListener("click", onDocumentClick);
     document.addEventListener("keydown", onDocumentKeydown);
+
+    // Close panel on any scroll — fixed-position panel won't follow trigger
+    document.addEventListener(
+      "scroll",
+      () => closeAllReceiptPanels(),
+      { capture: true, passive: true }
+    );
 
     state.observer = new MutationObserver(() => {
       scheduleRender();

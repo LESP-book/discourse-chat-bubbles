@@ -197,6 +197,7 @@
   display: none;
 }
 
+// Read receipt trigger (inline, inside message containers)
 .chat-message-container {
   .cb-read-receipt {
     position: relative;
@@ -206,11 +207,6 @@
     margin-top: 0.4rem;
     margin-left: calc(var(--message-left-width) + 0.75rem);
     margin-right: auto;
-    z-index: 4;
-
-    &.is-open .cb-read-receipt__panel {
-      display: block;
-    }
   }
 
   .cb-read-receipt__trigger {
@@ -264,92 +260,91 @@
     font-size: var(--font-down-2);
     font-weight: 600;
   }
-
-  .cb-read-receipt__panel {
-    display: none;
-    position: fixed;
-    left: 0;
-    top: 0;
-    width: min(320px, calc(100vw - 2rem));
-    max-height: calc(100vh - 1rem);
-    overflow-y: auto;
-    background-color: var(--secondary);
-    border: 1px solid var(--primary-low);
-    border-radius: 14px;
-    box-shadow: 0 14px 30px rgba(0, 0, 0, 0.28);
-    padding: 0.9rem;
-    text-align: left;
-    opacity: 1;
-    mix-blend-mode: normal;
-    isolation: isolate;
-    z-index: 10010;
-  }
-
-  .cb-read-receipt__title {
-    margin: 0 0 0.75rem;
-    color: var(--primary-high);
-    font-size: var(--font-up-1);
-    font-weight: 700;
-  }
-
-  .cb-read-receipt__list {
-    display: flex;
-    flex-direction: column;
-    gap: 0.7rem;
-  }
-
-  .cb-read-receipt__item {
-    display: flex;
-    align-items: center;
-    gap: 0.65rem;
-    min-width: 0;
-  }
-
-  .cb-read-receipt__item-avatar,
-  .cb-read-receipt__item-avatar-fallback {
-    flex: 0 0 44px;
-    width: 44px;
-    height: 44px;
-    border-radius: 999px;
-    border: 1px solid var(--primary-low);
-    background: var(--secondary);
-  }
-
-  .cb-read-receipt__item-avatar {
-    object-fit: cover;
-  }
-
-  .cb-read-receipt__item-avatar-fallback {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    color: var(--primary-high);
-    font-size: var(--font-up-1);
-    font-weight: 600;
-  }
-
-  .cb-read-receipt__item-content {
-    display: flex;
-    flex-direction: column;
-    min-width: 0;
-  }
-
-  .cb-read-receipt__item-name {
-    color: var(--primary-high);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-
-  .cb-read-receipt__item-time {
-    color: var(--primary-medium);
-    font-size: var(--font-down-1);
-    font-variant-numeric: tabular-nums;
-  }
 }
 
 .chat-message-container.is-by-current-user .cb-read-receipt {
   justify-content: flex-end;
   margin-left: auto;
   margin-right: 0.75rem;
+}
+
+// Read receipt panel (portal: rendered in #cb-read-receipt-portal on body)
+// Kept outside message DOM to escape stacking contexts and transform containers.
+.cb-read-receipt__panel {
+  position: fixed;
+  left: 0;
+  top: 0;
+  width: min(320px, calc(100vw - 2rem));
+  max-height: calc(100vh - 1rem);
+  overflow-y: auto;
+  background-color: var(--secondary);
+  border: 1px solid var(--primary-low);
+  border-radius: 14px;
+  box-shadow: 0 14px 30px rgba(0, 0, 0, 0.28);
+  padding: 0.9rem;
+  text-align: left;
+  isolation: isolate;
+  z-index: 10010;
+}
+
+.cb-read-receipt__title {
+  margin: 0 0 0.75rem;
+  color: var(--primary-high);
+  font-size: var(--font-up-1);
+  font-weight: 700;
+}
+
+.cb-read-receipt__list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+}
+
+.cb-read-receipt__item {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  min-width: 0;
+}
+
+.cb-read-receipt__item-avatar,
+.cb-read-receipt__item-avatar-fallback {
+  flex: 0 0 44px;
+  width: 44px;
+  height: 44px;
+  border-radius: 999px;
+  border: 1px solid var(--primary-low);
+  background: var(--secondary);
+}
+
+.cb-read-receipt__item-avatar {
+  object-fit: cover;
+}
+
+.cb-read-receipt__item-avatar-fallback {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--primary-high);
+  font-size: var(--font-up-1);
+  font-weight: 600;
+}
+
+.cb-read-receipt__item-content {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.cb-read-receipt__item-name {
+  color: var(--primary-high);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cb-read-receipt__item-time {
+  color: var(--primary-medium);
+  font-size: var(--font-down-1);
+  font-variant-numeric: tabular-nums;
 }
