@@ -187,14 +187,20 @@ export default apiInitializer("0.11.1", (api) => {
     }
 
     const { panel, receipt, trigger } = state.openPanel;
-    panel.hidden = true;
-    // Return panel to its origin receipt for DOM lifecycle management
-    receipt.appendChild(panel);
-    receipt.classList.remove("is-open");
-    if (trigger) {
-      trigger.setAttribute("aria-expanded", "false");
-    }
     state.openPanel = null;
+
+    // Wrap DOM mutations to prevent MutationObserver self-trigger
+    mutateWithoutObserver(() => {
+      panel.hidden = true;
+      // Return panel to its origin receipt for DOM lifecycle management
+      if (receipt.isConnected) {
+        receipt.appendChild(panel);
+      }
+      receipt.classList.remove("is-open");
+      if (trigger) {
+        trigger.setAttribute("aria-expanded", "false");
+      }
+    });
   }
 
   function buildAvatar(user, className, size) {
@@ -350,61 +356,99 @@ export default apiInitializer("0.11.1", (api) => {
     });
   }
 
-  function syncReadReceiptsInDom(memberships) {
-    // Close open panel before mutating DOM to prevent orphaned portal panels
-    closeAllReceiptPanels();
+  // Pause MutationObserver during our own DOM writes to prevent self-triggered renders
+  function mutateWithoutObserver(fn) {
+    if (state.observer) {
+      state.observer.disconnect();
+    }
+    try {
+      fn();
+    } finally {
+      if (state.observer) {
+        state.observer.observe(document.body, {
+          childList: true,
+          subtree: true,
+        });
+      }
+    }
+  }
 
+  function syncReadReceiptsInDom(memberships) {
     const containers = document.querySelectorAll(
       ".chat-message-container[data-id]"
     );
 
     if (memberships.length === 0) {
-      removeAllReadReceipts();
+      closeAllReceiptPanels();
+      mutateWithoutObserver(() => removeAllReadReceipts());
       return;
     }
 
     const membershipsSortedBySeenTime = sortReadersBySeenTime(memberships);
     const activeContainerIds = new Set();
 
-    containers.forEach((container) => {
-      const messageId = Number(container.dataset.id);
-      if (!Number.isInteger(messageId)) {
-        return;
-      }
+    // Track whether the currently-open panel's receipt gets replaced
+    const openReceipt = state.openPanel?.receipt;
+    let openReceiptSurvived = false;
 
-      activeContainerIds.add(String(messageId));
-      const readers = getReadersForMessage(membershipsSortedBySeenTime, messageId);
-      const existingReceipt = container.querySelector(".cb-read-receipt");
+    mutateWithoutObserver(() => {
+      containers.forEach((container) => {
+        const messageId = Number(container.dataset.id);
+        if (!Number.isInteger(messageId)) {
+          return;
+        }
 
-      if (readers.length === 0) {
-        existingReceipt?.remove();
-        return;
-      }
+        activeContainerIds.add(String(messageId));
+        const readers = getReadersForMessage(membershipsSortedBySeenTime, messageId);
+        const existingReceipt = container.querySelector(".cb-read-receipt");
 
-      const signature = buildReadersSignature(readers);
+        if (readers.length === 0) {
+          if (existingReceipt === openReceipt) {
+            closeAllReceiptPanels();
+          }
+          existingReceipt?.remove();
+          return;
+        }
 
-      if (existingReceipt?.dataset.signature === signature) {
-        return;
-      }
+        const signature = buildReadersSignature(readers);
 
-      const nextReceipt = buildReceiptElement(readers, signature);
+        if (existingReceipt?.dataset.signature === signature) {
+          if (existingReceipt === openReceipt) {
+            openReceiptSurvived = true;
+          }
+          return;
+        }
 
-      if (existingReceipt) {
-        existingReceipt.replaceWith(nextReceipt);
-      } else {
-        container.appendChild(nextReceipt);
-      }
+        const nextReceipt = buildReceiptElement(readers, signature);
+
+        if (existingReceipt) {
+          if (existingReceipt === openReceipt) {
+            closeAllReceiptPanels();
+          }
+          existingReceipt.replaceWith(nextReceipt);
+        } else {
+          container.appendChild(nextReceipt);
+        }
+      });
+
+      document.querySelectorAll(".chat-message-container .cb-read-receipt").forEach(
+        (receipt) => {
+          const messageContainer = receipt.closest(".chat-message-container");
+          const messageId = messageContainer?.dataset?.id;
+          if (!messageId || !activeContainerIds.has(messageId)) {
+            if (receipt === openReceipt) {
+              closeAllReceiptPanels();
+            }
+            receipt.remove();
+          }
+        }
+      );
     });
 
-    document.querySelectorAll(".chat-message-container .cb-read-receipt").forEach(
-      (receipt) => {
-        const messageContainer = receipt.closest(".chat-message-container");
-        const messageId = messageContainer?.dataset?.id;
-        if (!messageId || !activeContainerIds.has(messageId)) {
-          receipt.remove();
-        }
-      }
-    );
+    // If the open receipt was neither replaced nor removed, keep the panel visible
+    if (openReceipt && !openReceiptSurvived && state.openPanel?.receipt === openReceipt) {
+      // Receipt was replaced/removed — panel already closed above
+    }
   }
 
   async function doRender({ forceMembershipRefresh = false } = {}) {
@@ -481,10 +525,13 @@ export default apiInitializer("0.11.1", (api) => {
         const panel = receipt.querySelector(".cb-read-receipt__panel");
         if (panel) {
           // Portal: move panel to body layer to escape stacking contexts
-          getPortalLayer().appendChild(panel);
-          receipt.classList.add("is-open");
-          trigger.setAttribute("aria-expanded", "true");
-          panel.hidden = false;
+          // Wrapped in mutateWithoutObserver to prevent self-triggered render cycle
+          mutateWithoutObserver(() => {
+            getPortalLayer().appendChild(panel);
+            receipt.classList.add("is-open");
+            trigger.setAttribute("aria-expanded", "true");
+            panel.hidden = false;
+          });
 
           // Double-rAF ensures browser completes layout before measurement
           requestAnimationFrame(() => {
