@@ -604,10 +604,20 @@ export default apiInitializer("0.11.1", (api) => {
     document.addEventListener("click", onDocumentClick);
     document.addEventListener("keydown", onDocumentKeydown);
 
-    // Close panel on any scroll — fixed-position panel won't follow trigger
+    // Close panel when the chat area scrolls (trigger moves but fixed panel stays).
+    // Ignore scroll events originating from inside the panel itself (user scrolling the list).
     document.addEventListener(
       "scroll",
-      () => closeAllReceiptPanels(),
+      (event) => {
+        if (
+          state.openPanel &&
+          !event.target.closest?.("#cb-read-receipt-portal") &&
+          event.target !== state.openPanel.panel &&
+          !state.openPanel.panel.contains(event.target)
+        ) {
+          closeAllReceiptPanels();
+        }
+      },
       { capture: true, passive: true }
     );
 
