@@ -141,6 +141,11 @@
     width: unset;
   }
 
+  .onebox {
+    // 上游 onebox 会启用 inline-size 容器查询，聊天气泡中需要关闭以避免卡片撑宽消息框。
+    container-type: normal !important;
+  }
+
   .chat-message-avatar,
   .chat-message-info__username {
     .is-by-current-user & {

@@ -1,8 +1,5 @@
 .chat-message {
   .onebox {
-    // Mobile onebox cards need normal container sizing to avoid overflow clipping.
-    container-type: normal !important;
-
     .aspect-image {
       max-width: unset;
     }
