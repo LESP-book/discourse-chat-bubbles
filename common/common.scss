@@ -158,6 +158,44 @@
   }
 }
 
+.chat-message-container.is-by-current-user.has-reply {
+  .chat-message {
+    grid-template-columns: 1fr minmax(0, 76%);
+    grid-template-rows: auto auto;
+    grid-template-areas:
+      ". replyto"
+      ". message";
+    column-gap: 0;
+  }
+
+  .chat-reply.is-direct-reply,
+  .chat-message-content {
+    justify-self: stretch;
+    box-sizing: border-box;
+    width: 100%;
+    max-width: 100%;
+    background: var(--bubble-bg-1);
+  }
+
+  .chat-reply.is-direct-reply {
+    min-width: 0;
+    overflow: hidden;
+    padding: 0.5rem 0.75rem 0.25rem;
+    border-radius: 10px 10px 0 0;
+    box-shadow: 0px 1px 0px var(--primary-low-mid);
+
+    .chat-reply__excerpt,
+    .chat-reply__username {
+      min-width: 0;
+    }
+  }
+
+  .chat-message-content {
+    border-top-left-radius: 0;
+    border-top-right-radius: 0;
+  }
+}
+
 .chat-message-info {
   &__date {
     order: 1;

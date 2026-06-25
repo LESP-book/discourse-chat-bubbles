@@ -1,8 +1,6 @@
 import { apiInitializer } from "discourse/lib/api";
 
 const MEMBERSHIP_PAGE_SIZE = 50;
-const MEMBERSHIP_CACHE_TTL_MS = 5000;
-const MEMBERSHIP_PAGE_LIMIT = 20;
 const RENDER_DEBOUNCE_MS = 120;
 const RECEIPT_AVATAR_SIZE = 40;
 const RECEIPT_PANEL_GAP = 8;
@@ -31,10 +29,15 @@ export default apiInitializer("0.11.1", (api) => {
     forceNextMembershipRefresh: false,
     openPanel: null,
     busSubscription: null,
+    readStateWarningShown: false,
   };
 
   function maxAvatarsToShow() {
     return Math.max(1, Number(settings.read_receipt_max_avatars || 3));
+  }
+
+  function readReceiptRefreshIntervalMs() {
+    return Number(settings.read_receipt_refresh_interval_seconds) * 1000;
   }
 
   function getAvatarUrl(user, size = RECEIPT_AVATAR_SIZE) {
@@ -100,12 +103,32 @@ export default apiInitializer("0.11.1", (api) => {
     };
   }
 
+  function membershipHasReadState(rawMembership) {
+    return (
+      rawMembership?.lastReadMessageId !== undefined ||
+      rawMembership?.last_read_message_id !== undefined
+    );
+  }
+
+  function warnMissingReadState() {
+    if (state.readStateWarningShown) {
+      return;
+    }
+
+    state.readStateWarningShown = true;
+    // eslint-disable-next-line no-console
+    console.warn(
+      "[chat-bubbles] Discourse did not expose channel membership read state; read receipt avatars cannot be rendered by this theme component on this Discourse version."
+    );
+  }
+
   async function fetchMembershipsForChannel(channelId) {
     const membershipsCollection = chatApi.listChannelMemberships(channelId, {
       limit: MEMBERSHIP_PAGE_SIZE,
     });
 
-    for (let page = 0; page < MEMBERSHIP_PAGE_LIMIT; page++) {
+    while (true) {
+      const previousLength = membershipsCollection.items.length;
       await membershipsCollection.load({ limit: MEMBERSHIP_PAGE_SIZE });
 
       if (!membershipsCollection.loadMoreURL) {
@@ -118,6 +141,20 @@ export default apiInitializer("0.11.1", (api) => {
       ) {
         break;
       }
+
+      // Collection 在没有更多数据时不会追加 items；用长度变化结束分页，避免固定页数上限。
+      if (membershipsCollection.items.length === previousLength) {
+        break;
+      }
+    }
+
+    if (
+      membershipsCollection.items.length > 0 &&
+      !membershipsCollection.items.some((membership) =>
+        membershipHasReadState(membership)
+      )
+    ) {
+      warnMissingReadState();
     }
 
     return membershipsCollection.items
@@ -131,7 +168,7 @@ export default apiInitializer("0.11.1", (api) => {
     const isCacheFresh =
       cacheEntry &&
       cacheEntry.memberships &&
-      now - cacheEntry.fetchedAt < MEMBERSHIP_CACHE_TTL_MS;
+      now - cacheEntry.fetchedAt < readReceiptRefreshIntervalMs();
 
     if (!force && isCacheFresh) {
       return cacheEntry.memberships;
@@ -352,7 +389,7 @@ export default apiInitializer("0.11.1", (api) => {
 
   function getReadersForMessage(memberships, messageId) {
     return memberships.filter((membership) => {
-      return membership.lastReadMessageId === messageId;
+      return membership.lastReadMessageId >= messageId;
     });
   }
 
@@ -375,7 +412,7 @@ export default apiInitializer("0.11.1", (api) => {
 
   function syncReadReceiptsInDom(memberships) {
     const containers = document.querySelectorAll(
-      ".chat-message-container[data-id]"
+      ".chat-message-container.is-by-current-user[data-id]"
     );
 
     if (memberships.length === 0) {
@@ -488,10 +525,10 @@ export default apiInitializer("0.11.1", (api) => {
       state.renderInFlight = false;
 
       if (state.pendingRender) {
-        const forceMembershipRefresh = state.forceNextMembershipRefresh;
+        const shouldForceMembershipRefresh = state.forceNextMembershipRefresh;
         state.pendingRender = false;
         state.forceNextMembershipRefresh = false;
-        doRender({ forceMembershipRefresh });
+        doRender({ forceMembershipRefresh: shouldForceMembershipRefresh });
       }
     }
   }
@@ -631,7 +668,7 @@ export default apiInitializer("0.11.1", (api) => {
 
     state.pollTimer = setInterval(() => {
       scheduleRender({ forceMembershipRefresh: true });
-    }, MEMBERSHIP_CACHE_TTL_MS);
+    }, readReceiptRefreshIntervalMs());
 
     scheduleRender({ forceMembershipRefresh: true });
   }
